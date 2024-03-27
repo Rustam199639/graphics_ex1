@@ -73,7 +73,7 @@ class SeamImage:
             To prevent outlier values in the boundaries, we recommend to pad them with 0.5
         """
         gray_img = np.dot(np_img, self.gs_weights)
-        gray_img = np.pad(gray_img, ((1, 1), (1, 1)),'constant', constant_values=0.5) ##
+        gray_img = np.pad(gray_img, ((1,1), (1,1),(0,0)),'constant', constant_values=0.5) 
         self.gs_squeez = gray_img.squeeze()
         return gray_img
 
