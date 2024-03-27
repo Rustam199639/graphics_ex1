@@ -154,12 +154,8 @@ class VerticalSeamImage(SeamImage):
             As taught, the energy is calculated from top to bottom.
             You might find the function 'np.roll' useful.
         """
-        edges_horizontal_mat = np.abs(np.roll(self.gs_squeez, 1, axis=1) - np.roll(self.gs_squeez, -1, axis=1))[1:-1, 1:-1]
-        edge_vertical_L_mat = np.abs(self.gs_squeez[:-2, 1:-1] - self.gs_squeez[1:-1, :-2])
-        edge_vertical_R_mat = np.abs(self.gs_squeez[1:-1, 2:] - self.gs_squeez[:-2, 1:-1])
-        M_by_pixel = self.E + edges_horizontal_mat
-       
-
+    raise NotImplementedError("TODO: Implement SeamImage.seams_removal")
+    
     # @NI_decor
     def seams_removal(self, num_remove: int):
         """ Iterates num_remove times and removes num_remove vertical seams
