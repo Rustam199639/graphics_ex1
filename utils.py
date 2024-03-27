@@ -72,10 +72,10 @@ class SeamImage:
             Use NumpyPy vectorized matrix multiplication for high performance.
             To prevent outlier values in the boundaries, we recommend to pad them with 0.5
         """
-        grey_img = np.dot(np_img, self.gs_weights)
-        grey_img = np.pad(grey_img, ((1, 1), (1, 1), (0, 0)), mode='constant', constant_values=0.5) ##
-        self.gs_squeez = grey_img.squeeze()
-        return grey_img
+        gray_img = np.dot(np_img, self.gs_weights)
+        gray_img = np.pad(gray_img, ((1, 1), (1, 1), (0, 0)), mode='constant', constant_values=0.5) ##
+        self.gs_squeez = gray_img.squeeze()
+        return gray_img
 
     # @NI_decor
     def calc_gradient_magnitude(self):
