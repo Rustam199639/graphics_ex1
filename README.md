@@ -1,2 +1,5 @@
 # graphics_ex1
- image processing operations,  Seam Carving, removing explicit objects from images using seam carving, comparing the methods in addition to bilinear scaling
+ Image processing operations,  
+ Seam Carving,
+ Removing explicit objects from images using Seam Carving,
+ Comparing the methods in addition to bilinear scaling
