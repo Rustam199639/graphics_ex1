@@ -73,7 +73,7 @@ class SeamImage:
             To prevent outlier values in the boundaries, we recommend to pad them with 0.5
         """
         gray_img = np.dot(np_img, self.gs_weights)
-        gray_img = np.pad(gray_img, ((1,1), (1,1),(0,0)),'constant', constant_values=0.5) 
+        gray_img = np.pad(gray_img,((1,1), (1,1),(0,0)),'constant',constant_values=0.5) 
         self.gs_squeez = gray_img.squeeze()
         return gray_img
 
@@ -154,7 +154,33 @@ class VerticalSeamImage(SeamImage):
             As taught, the energy is calculated from top to bottom.
             You might find the function 'np.roll' useful.
         """
-    raise NotImplementedError("TODO: Implement SeamImage.seams_removal")
+        
+        # Compute vertical energy gradients (right direction)
+        vertical_edges_right = np.abs(self.gs_squeez[1:-1, 2:] - self.gs_squeez[:-2, 1:-1])
+        # Compute vertical energy gradients (left direction)
+        vertical_edges_left = np.abs(self.gs_squeez[:-2, 1:-1] - self.gs_squeez[1:-1, :-2])
+
+        # Compute horizontal energy gradients
+        horizontal_edges = np.abs(np.roll(self.gs_squeez, 1, axis=1) - np.roll(self.gs_squeez, -1, axis=1))[1:-1, 1:-1]
+        
+        # Calculate energy by adding horizontal edges to initial energy matrix
+        energy_by_pixel = self.E + horizontal_edges
+
+        # Construct connectivity costs by pixel in three directions
+        connectivity_costs_by_pixel = np.stack([vertical_edges_left, np.zeros_like(vertical_edges_left), vertical_edges_right], axis=2)
+        connectivity_costs_by_pixel = connectivity_costs_by_pixel.swapaxes(1, 2)
+        
+        # Initialize backtrack matrix with zeros
+        self.backtrack = np.zeros_like(energy_by_pixel, dtype=int)
+        # Get the number of rows and columns in the energy matrix
+        num_rows, num_columns = energy_by_pixel.shape
+        # Create a copy of energy matrix with trailing costs
+        energy_with_trailing = energy_by_pixel.copy()
+        # Calculate energy matrix with trailing costs and update backtrack matrix
+        energy_with_trailing, self.backtrack = self.calculate_backtrack_matrix(energy_with_trailing, self.backtrack, connectivity_costs_by_pixel, num_rows, num_columns)
+        return energy_with_trailing
+
+    
     
     # @NI_decor
     def seams_removal(self, num_remove: int):
