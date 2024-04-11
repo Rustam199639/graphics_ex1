@@ -154,33 +154,33 @@ class VerticalSeamImage(SeamImage):
             As taught, the energy is calculated from top to bottom.
             You might find the function 'np.roll' useful.
         """
-        
-        # Compute vertical energy gradients (right direction)
-        vertical_edges_right = np.abs(self.gs_squeez[1:-1, 2:] - self.gs_squeez[:-2, 1:-1])
-        # Compute vertical energy gradients (left direction)
-        vertical_edges_left = np.abs(self.gs_squeez[:-2, 1:-1] - self.gs_squeez[1:-1, :-2])
+        # Print initial dimensions for debugging
+        # Adjust gs_squeez to match the dimension of self.E before rolling
+        adjusted_gs_squeez = self.gs_squeez[1:-1, 1:-1]  # Reduce to (720, 720) before rolling
 
-        # Compute horizontal energy gradients
-        horizontal_edges = np.abs(np.roll(self.gs_squeez, 1, axis=1) - np.roll(self.gs_squeez, -1, axis=1))[1:-1, 1:-1]
-        
-        # Calculate energy by adding horizontal edges to initial energy matrix
-        energy_by_pixel = self.E + horizontal_edges
+        # Apply rolling on the adjusted gs_squeez
+        rolled_left = np.roll(adjusted_gs_squeez, 1, axis=1)
+        rolled_right = np.roll(adjusted_gs_squeez, -1, axis=1)
 
-        # Construct connectivity costs by pixel in three directions
-        connectivity_costs_by_pixel = np.stack([vertical_edges_left, np.zeros_like(vertical_edges_left), vertical_edges_right], axis=2)
-        connectivity_costs_by_pixel = connectivity_costs_by_pixel.swapaxes(1, 2)
-        
-        # Initialize backtrack matrix with zeros
-        self.backtrack = np.zeros_like(energy_by_pixel, dtype=int)
-        # Get the number of rows and columns in the energy matrix
-        num_rows, num_columns = energy_by_pixel.shape
-        # Create a copy of energy matrix with trailing costs
-        energy_with_trailing = energy_by_pixel.copy()
-        # Calculate energy matrix with trailing costs and update backtrack matrix
-        energy_with_trailing, self.backtrack = self.calculate_backtrack_matrix(energy_with_trailing, self.backtrack, connectivity_costs_by_pixel, num_rows, num_columns)
-        return energy_with_trailing
+        # Calculate horizontal gradients and then slice to match the exact dimensions of self.E[1:-1, 1:-1]
+        horizontal_edges = np.abs(rolled_left - rolled_right)[1:-1, 1:-1]  # Reduce both dimensions to (718, 718)
 
-    
+        print("Final dimensions of horizontal_edges:", horizontal_edges.shape)
+
+        # Check the dimensions before proceeding
+        if self.E[1:-1, 1:-1].shape != horizontal_edges.shape:
+            raise ValueError(f"Dimension mismatch: self.E[1:-1, 1:-1] ({self.E[1:-1, 1:-1].shape}) does not match horizontal_edges ({horizontal_edges.shape})")
+
+        # Combine horizontal edges with the corresponding slice of self.E
+        energy_by_pixel = self.E[1:-1, 1:-1] + horizontal_edges
+
+        # Initialize the full M matrix with the same dimensions as self.E but with zero padding
+        M = np.zeros_like(self.E, dtype=np.float32)
+        M[1:-1, 1:-1] = energy_by_pixel
+
+        return M
+
+
     
     # @NI_decor
     def seams_removal(self, num_remove: int):
@@ -207,7 +207,35 @@ class VerticalSeamImage(SeamImage):
             - removing seams couple of times (call the function more than once)
             - visualize the original image with removed seams marked (for comparison)
         """
-        raise NotImplementedError("TODO: Implement SeamImage.seams_removal")
+        for _ in range(num_remove):
+            self.E = self.calc_gradient_magnitude()  # Recalculate the gradient magnitude matrix
+            self.M = self.calc_M()  # Recalculate the cumulative energy matrix
+            seam = self.find_seam()  # Find the seam with the minimum cumulative energy
+            self.remove_seam(seam)  # Remove the identified seam
+    
+    def find_seam(self):
+        """Finds the seam with the minimum cumulative energy based on M matrix."""
+        # Pseudocode for finding the seam using the backtracking matrix
+        h, w = self.M.shape
+        seam = np.zeros(h, dtype=np.uint32)
+        seam[-1] = np.argmin(self.M[-1])  # Start from the bottom row, choosing the minimum energy pixel
+        
+        # Backtrack from bottom to top to find the path of the seam
+        for i in range(h - 2, -1, -1):
+            j = seam[i + 1]
+            if j > 0 and j < w - 1:
+                # Check three neighboring cells from the previous row and find the path with the minimum cumulative energy
+                seam[i] = j + (np.argmin([self.M[i, j - 1], self.M[i, j], self.M[i, j + 1]]) - 1)
+            elif j == 0:
+                # Edge case for the first column
+                seam[i] = j + np.argmin([self.M[i, j], self.M[i, j + 1]])
+            else:
+                # Edge case for the last column
+                seam[i] = j + (np.argmin([self.M[i, j - 1], self.M[i, j]]) - 1)
+        
+        self.current_seam = seam  # Store the current seam as an attribute
+        return seam
+            
 
     def paint_seams(self):
         for s in self.seam_history:
@@ -233,6 +261,21 @@ class VerticalSeamImage(SeamImage):
         self.seams_removal(num_remove)
         self.rotate_mats(clockwise=False)
 
+    def update_matrices_post_removal(self):
+        """Update or reset matrices and internal state after each seam removal."""
+        # Recalculate or adjust the energy matrix if needed
+        # This is an optional step if energy matrix recalculations are not handled elsewhere
+        self.E = self.calc_gradient_magnitude()
+
+        # Reset or update the backtrack matrix if used in seam finding
+        # This is just a placeholder example
+        if hasattr(self, 'backtrack'):
+            self.backtrack = np.zeros_like(self.M, dtype=int)  # Resetting or recalculating
+
+        # Any additional cleanup or reinitialization tasks
+        # This could include resetting counters, updating logs, or recalibrating parameters
+        print("Matrices and state updated after seam removal.")
+
     # @NI_decor
     def seams_removal_vertical(self, num_remove):
         """ A wrapper for removing num_remove horizontal seams (just a recommendation)
@@ -240,13 +283,60 @@ class VerticalSeamImage(SeamImage):
         Parameters:
             num_remove (int): umber of vertical seam to be removed
         """
-        raise NotImplementedError("TODO: Implement SeamImage.seams_removal_vertical")
+        # Directly call the general seam removal method for vertical seams
+        for _ in range(num_remove):
+            # Recalculate energy based on current image state
+            self.E = self.calc_gradient_magnitude()  # Optional: Define this method to update energy matrix
+            self.M = self.calc_M()  # Recalculate the cumulative energy matrix using updated energy matrix
+
+            # Find the seam with the minimum energy and update the current seam
+            self.find_seam()
+
+            # Remove the current seam from the image
+            self.remove_seam()
+
+            # Optional: Update any visualizations or additional matrices
+            # This could include updating visual marks on an image to show removed seams
+            # Or updating any internal state needed for further seam removals
+            # Example:
+            # if self.vis_seams:
+            #     self.mark_seam_on_visualization(self.current_seam)
+            
+            # Optional: Re-initialize matrices or clean up after seam removal
+            self.update_matrices_post_removal()  # Ensure this method manages any required state updates
 
     # @NI_decor
     def backtrack_seam(self):
         """ Backtracks a seam for Seam Carving as taught in lecture
         """
-        raise NotImplementedError("TODO: Implement SeamImage.backtrack_seam_b")
+        h, w = self.M.shape
+        seam = np.zeros(h, dtype=np.uint32)
+        
+        # Automatically determine the starting point of the seam at the last row
+        seam[-1] = np.argmin(self.M[-1])
+        
+        # Backtrack from bottom to top to find the path of the seam
+        for i in range(h - 2, -1, -1):
+            j = seam[i + 1]
+            if j > 0 and j < w - 1:
+                # Check three neighboring cells from the previous row and find the path with the minimum cumulative energy
+                min_index = np.argmin([self.M[i, j - 1], self.M[i, j], self.M[i, j + 1]])
+                seam[i] = j + (min_index - 1)  # Adjust index (-1, 0, 1)
+            elif j == 0:
+                # Edge case for the first column
+                min_index = np.argmin([self.M[i, j], self.M[i, j + 1]])
+                seam[i] = j + min_index  # Adjust index (0, 1)
+            else:
+                # Edge case for the last column
+                min_index = np.argmin([self.M[i, j - 1], self.M[i, j]])
+                seam[i] = j + (min_index - 1)  # Adjust index (-1, 0)
+        return seam
+    
+    # @NI_decor
+    def mark_seam_on_visualization(self, seam):
+        """Mark the seam on the visualization."""
+        # Placeholder implementation for marking the seam on the visualization
+        pass
 
     # @NI_decor
     def remove_seam(self):
@@ -255,7 +345,17 @@ class VerticalSeamImage(SeamImage):
         Guidelines & hints:
         In order to apply the removal, you might want to extend the seam mask to support 3 channels (rgb) using: 3d_mak = np.stack([1d_mask] * 3, axis=2), and then use it to create a resized version.
         """
-        raise NotImplementedError("TODO: Implement SeamImage.remove_seam")
+        h, w, _ = self.rgb.shape  # Dimensions of the current image
+        mask = np.ones((h, w), dtype=bool)  # Start with a mask that keeps every pixel
+
+        # Update the mask to remove the specified seam
+        mask[np.arange(h), self.current_seam] = False
+
+        # Extend the seam mask to support 3 channels (rgb)
+        three_d_mask = np.stack([mask] * 3, axis=2)
+        
+        # Apply the mask to the RGB channels to create a resized version of the image
+        self.resized_rgb = self.rgb[three_d_mask].reshape(h, w - 1, 3)  # Note: numpy boolean indexing results in a flat array, thus the reshape
 
     # @NI_decor
     def seams_addition(self, num_add: int):
